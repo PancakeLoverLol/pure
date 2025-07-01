@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>P.U.R.E. – Roblox Moderation Script</title>
+  <style>
+    :root {
+      --main-color: #ff2e63;
+      --bg-color: #0b0b0b;
+      --font: monospace;
+    }
+
+    body {
+      font-family: var(--font);
+      background-color: var(--bg-color);
+      color: white;
+      padding: 40px;
+      text-align: center;
+    }
+
+    h1.glow {
+      font-size: 3.5rem;
+      color: var(--main-color);
+      text-shadow: 0 0 10px var(--main-color), 0 0 30px var(--main-color);
+    }
+
+    h2 {
+      color: var(--main-color);
+    }
+
+    .btn, .copy-btn {
+      display: inline-block;
+      margin: 20px auto;
+      padding: 12px 24px;
+      font-weight: bold;
+      border-radius: 10px;
+      background-color: var(--main-color);
+      color: white;
+      text-decoration: none;
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+      cursor: pointer;
+    }
+
+    .btn:hover, .copy-btn:hover {
+      transform: scale(1.1);
+      box-shadow: 0 0 15px var(--main-color), 0 0 30px var(--main-color);
+    }
+
+    pre {
+      text-align: left;
+      background: #1e1e1e;
+      padding: 20px;
+      border-radius: 8px;
+      overflow-x: auto;
+      max-width: 900px;
+      margin: 20px auto;
+      font-size: 0.9rem;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    p {
+      max-width: 700px;
+      margin: auto;
+      font-size: 1.1rem;
+    }
+
+    #copied-msg {
+      display: none;
+      margin-top: 10px;
+      color: #00ff99;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <h1 class="glow">P.U.R.E.</h1>
+  <h2>Purge Unacceptable Rhetoric Engine</h2>
+  <p>This script kicks players for saying inappropriate words and logs it to your Discord webhook automatically.</p>
+
+  <button class="copy-btn" onclick="copyScript()">📋 Copy Script</button>
+  <div id="copied-msg">✅ Script copied to clipboard!</div>
+
+  <pre id="script">
+local HttpService = game:GetService("HttpService")
+local Players = game:GetService("Players")
+
+local WEBHOOK_URL = "https://discord.com/api/webhooks/your_webhook_here"
+
+local BANNED_WORDS = {
+    "erp", "seggs", "horny", "porn", "xxx", "nude", "naked", "dick", "penis",
+    "cum", "fuck", "shit", "bitch", "slut", "whore", "pussy", "masturbate",
+    "cock", "rape", "sex", "anal", "orgy", "hentai", "pedo", "milf"
+}
+
+local function normalize(text)
+    return string.lower((text or "")):gsub("[%p%s]", "")
+end
+
+local function sendKickReport(player, reason, message)
+    local data = {
+        username = "P.U.R.E. Moderation",
+        embeds = {{
+            title = "Player Kicked",
+            color = 16711680,
+            fields = {
+                {name = "Player", value = player.Name, inline = true},
+                {name = "UserId", value = tostring(player.UserId), inline = true},
+                {name = "Reason", value = reason, inline = false},
+                {name = "Message", value = message, inline = false},
+            },
+            timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
+        }}
+    }
+
+    local success, err = pcall(function()
+        HttpService:PostAsync(WEBHOOK_URL, HttpService:JSONEncode(data), Enum.HttpContentType.ApplicationJson)
+    end)
+
+    if not success then
+        warn("Failed to send webhook:", err)
+    end
+end
+
+local function checkMessage(player, message)
+    local normalized = normalize(message)
+    for _, word in pairs(BANNED_WORDS) do
+        if string.find(normalized, word, 1, true) then
+            sendKickReport(player, "Inappropriate Language", message)
+            player:Kick("You have been kicked for inappropriate language.")
+            break
+        end
+    end
+end
+
+Players.PlayerAdded:Connect(function(player)
+    player.Chatted:Connect(function(msg)
+        checkMessage(player, msg)
+    end)
+end)
+  </pre>
+
+  <script>
+    function copyScript() {
+      const code = document.getElementById("script").innerText;
+      navigator.clipboard.writeText(code).then(() => {
+        const msg = document.getElementById("copied-msg");
+        msg.style.display = "block";
+        setTimeout(() => {
+          msg.style.display = "none";
+        }, 2000);
+      }).catch(err => {
+        alert("Failed to copy: " + err);
+      });
+    }
+  </script>
+</body>
+</html>
