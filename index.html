@@ -79,119 +79,109 @@
 local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 
-local WEBHOOK_URL = "https://discord.com/api/webhooks/your_webhook_here"
+local DISCORD_WEBHOOK_URL = "YOUR_WEBHOOK_HERE" -- move this to a ModuleScript in ServerScriptService
 
 local BANNED_WORDS = {
-    "erp", "seggs", "horny", "porn", "xxx", "nude", "naked", "dick", "penis",
-    "cum", "fuck", "shit", "bitch", "slut", "whore", "pussy", "masturbate",
-    "cock", "rape", "sex", "anal", "orgy", "hentai", "pedo", "milf"
+	"sex", "erp", "horny", "nude", "porn", "fetish", "boobs", "tits", "dick", "penis",
+	"vagina", "cum", "blowjob", "anal", "fuck", "slut", "masturbate", "cock", "rape",
+	"molest", "s3x", "nigga", "creampie", "deepthroat", "handjob", "strip", "bdsm",
+	"hentai", "kink", "orgasm", "fisting", "panties", "lingerie", "footjob", "asshole"
 }
 
-local function normalize(text)
-    return string.lower((text or "")):gsub("[%p%s]", "")
-end
-
-local function sendKickReport(player, reason, message)
-    local data = {
-        username = "P.U.R.E. Moderation",
-        embeds = {{
-            title = "Player Kicked",
-            color = 16711680,
-            fields = {
-                {name = "Player", value = player.Name, inline = true},
-                {name = "UserId", value = tostring(player.UserId), inline = true},
-                {name = "Reason", value = reason, inline = false},
-                {name = "Message", value = message, inline = false},
-            },
-            timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
-        }}
-    }
-
-    local success, err = pcall(function()
-        HttpService:PostAsync(WEBHOOK_URL, HttpService:JSONEncode(data), Enum.HttpContentType.ApplicationJson)
-    end)
-
-    if not success then
-        warn("Failed to send webhook:", err)
-    end
-end
-
-local function checkMessage(player, message)
-    local normalized = normalize(message)
-    for _, word in pairs(BANNED_WORDS) do
-        if string.find(normalized, word, 1, true) then
-            sendKickReport(player, "Inappropriate Language", message)
-            player:Kick("You have been kicked for inappropriate language.")
-            break
-        end
-    end
-end
-
-Players.PlayerAdded:Connect(function(player)
-    player.Chatted:Connect(function(msg)
-        checkMessage(player, msg)
-    end)
-end)
-  </pre>
-
-  <!-- Hidden textarea to enable copy -->
-  <textarea id="script-hidden" readonly>
-local HttpService = game:GetService("HttpService")
-local Players = game:GetService("Players")
-
-local WEBHOOK_URL = "https://discord.com/api/webhooks/your_webhook_here"
-
-local BANNED_WORDS = {
-    "erp", "seggs", "horny", "porn", "xxx", "nude", "naked", "dick", "penis",
-    "cum", "fuck", "shit", "bitch", "slut", "whore", "pussy", "masturbate",
-    "cock", "rape", "sex", "anal", "orgy", "hentai", "pedo", "milf"
+-- Used to reduce false positives
+local WHITELIST = {
+	"assistant", "pass", "class", "grass", "bass", "sucker", "support", "compass"
 }
 
+-- Normalize and strip spacing, punctuation, and casing
 local function normalize(text)
-    return string.lower((text or "")):gsub("[%p%s]", "")
+	return string.lower((text or "")):gsub("[%W_]", "") -- removes all non-alphanumeric
 end
 
+-- Detect spaced or leetspeak variants (e.g. "s e x", "s3x")
+local function expandLeet(text)
+	local leet = {
+		["0"] = "o", ["1"] = "i", ["3"] = "e", ["4"] = "a",
+		["@"] = "a", ["5"] = "s", ["7"] = "t", ["$"] = "s"
+	}
+	return text:gsub(".", function(c)
+		return leet[c] or c
+	end)
+end
+
+-- Send report to Discord
 local function sendKickReport(player, reason, message)
-    local data = {
-        username = "P.U.R.E. Moderation",
-        embeds = {{
-            title = "Player Kicked",
-            color = 16711680,
-            fields = {
-                {name = "Player", value = player.Name, inline = true},
-                {name = "UserId", value = tostring(player.UserId), inline = true},
-                {name = "Reason", value = reason, inline = false},
-                {name = "Message", value = message, inline = false},
-            },
-            timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ")
-        }}
-    }
+	local data = {
+		content = string.format(
+			"🚨 **Player Kicked** 🚨\n**Player:** %s (ID: %d)\n**Reason:** %s\n**Message:** %s",
+			player.Name,
+			player.UserId,
+			reason,
+			message or "N/A"
+		)
+	}
 
-    local success, err = pcall(function()
-        HttpService:PostAsync(WEBHOOK_URL, HttpService:JSONEncode(data), Enum.HttpContentType.ApplicationJson)
-    end)
-
-    if not success then
-        warn("Failed to send webhook:", err)
-    end
+	pcall(function()
+		HttpService:PostAsync(
+			DISCORD_WEBHOOK_URL,
+			HttpService:JSONEncode(data),
+			Enum.HttpContentType.ApplicationJson
+		)
+	end)
 end
 
-local function checkMessage(player, message)
-    local normalized = normalize(message)
-    for _, word in pairs(BANNED_WORDS) do
-        if string.find(normalized, word, 1, true) then
-            sendKickReport(player, "Inappropriate Language", message)
-            player:Kick("You have been kicked for inappropriate language.")
-            break
-        end
-    end
+-- Check message against banned words
+local function checkText(player, text, context)
+	local normalized = expandLeet(normalize(text))
+
+	-- Whitelist check
+	for _, w in WHITELIST do
+		if normalized:find(w) then return end
+	end
+
+	for _, badWord in BANNED_WORDS do
+		if normalized:find(badWord) then
+			sendKickReport(player, "Inappropriate " .. context, text)
+			player:Kick("Kicked for inappropriate " .. context)
+			return true
+		end
+	end
 end
 
+-- Check player info on join
+local function checkPlayerInfo(player)
+	local checked = {
+		["Username"] = player.Name,
+		["DisplayName"] = player.DisplayName,
+	}
+
+	for key, val in checked do
+		if checkText(player, val, key) then return end
+	end
+
+	-- Bio check if available
+	local success, descInfo = pcall(function()
+		return Players:GetHumanoidDescriptionFromUserId(player.UserId)
+	end)
+
+	if success and descInfo and descInfo.ClothingDescription then
+		checkText(player, descInfo.ClothingDescription, "Bio")
+	end
+end
+
+-- Message listener
+local function onPlayerChatted(player)
+	player.Chatted:Connect(function(message)
+		checkText(player, message, "Chat Message")
+	end)
+end
+
+-- Main
 Players.PlayerAdded:Connect(function(player)
-    player.Chatted:Connect(function(msg)
-        checkMessage(player, msg)
-    end)
+	checkPlayerInfo(player)
+	onPlayerChatted(player)
 end)
+
   </textarea>
 
   <script>
