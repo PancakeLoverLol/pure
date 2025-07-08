@@ -79,109 +79,123 @@
 local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 
-local DISCORD_WEBHOOK_URL = "YOUR_WEBHOOK_HERE" -- move this to a ModuleScript in ServerScriptService
+-- 🚨 Replace this with your Discord webhook URL
+local DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/your_webhook_here"
 
+-- 🌐 Replace this with your actual hosted banlist JSON URL
+local BANLIST_URL = "https://pancakeloverlol.github.io/pure-website/banlist.json"
+
+-- 🚫 Banned words list
 local BANNED_WORDS = {
-	"sex", "erp", "horny", "nude", "porn", "fetish", "boobs", "tits", "dick", "penis",
-	"vagina", "cum", "blowjob", "anal", "fuck", "slut", "masturbate", "cock", "rape",
-	"molest", "s3x", "nigga", "creampie", "deepthroat", "handjob", "strip", "bdsm",
-	"hentai", "kink", "orgasm", "fisting", "panties", "lingerie", "footjob", "asshole"
+	"seggs", "erp", "s3x", "horny", "nude", "naked", "porn", "xxx", "fetish",
+	"boobs", "tits", "ass", "butt", "dick", "penis", "vagina", "cum", "dildo",
+	"blowjob", "anal", "orgy", "fuck", "fucking", "shit", "bitch", "slut",
+	"whore", "cunt", "pussy", "masturbate", "jizz", "handjob", "douche",
+	"cock", "rape", "sex", "sexually", "incest", "bondage", "dominate",
+	"kink", "strip", "stripper", "transgender", "twink", "hentai", "pedo",
+	"creampie", "intercourse", "naughty", "erotic", "sensual", "orgasm",
+	"threesome", "milf", "bdsm", "cumshot", "footjob", "panties", "lingerie",
+	"buttplug", "gloryhole", "spank", "twerk", "asshole", "scat", "cameltoe",
+	"fisting", "clitoris", "labia", "prostitute", "striptease", "sex toy",
+	"tease", "deepthroat", "ballbusting", "suck", "humping", "oral", "vibrator",
+	"molest", "sex slave", "motherfucker", "nigga"
 }
 
--- Used to reduce false positives
-local WHITELIST = {
-	"assistant", "pass", "class", "grass", "bass", "sucker", "support", "compass"
-}
-
--- Normalize and strip spacing, punctuation, and casing
+-- Normalizes input (removes punctuation, makes lowercase)
 local function normalize(text)
-	return string.lower((text or "")):gsub("[%W_]", "") -- removes all non-alphanumeric
+	return string.lower((text or "")):gsub("[%p%s]", "")
 end
 
--- Detect spaced or leetspeak variants (e.g. "s e x", "s3x")
-local function expandLeet(text)
-	local leet = {
-		["0"] = "o", ["1"] = "i", ["3"] = "e", ["4"] = "a",
-		["@"] = "a", ["5"] = "s", ["7"] = "t", ["$"] = "s"
-	}
-	return text:gsub(".", function(c)
-		return leet[c] or c
-	end)
-end
-
--- Send report to Discord
+-- Sends a webhook report to Discord
 local function sendKickReport(player, reason, message)
-	local data = {
-		content = string.format(
-			"🚨 **Player Kicked** 🚨\n**Player:** %s (ID: %d)\n**Reason:** %s\n**Message:** %s",
-			player.Name,
-			player.UserId,
-			reason,
-			message or "N/A"
-		)
-	}
+	local content = string.format(
+		"🚨 **Player Kicked** 🚨\n**Player:** %s (UserId: %d)\n**Reason:** %s\n**Message:** %s",
+		player.Name,
+		player.UserId,
+		reason,
+		message or "N/A"
+	)
 
-	pcall(function()
+	local data = { content = content }
+
+	local success, err = pcall(function()
 		HttpService:PostAsync(
 			DISCORD_WEBHOOK_URL,
 			HttpService:JSONEncode(data),
 			Enum.HttpContentType.ApplicationJson
 		)
 	end)
+
+	if not success then
+		warn("Failed to send webhook:", err)
+	end
 end
 
--- Check message against banned words
-local function checkText(player, text, context)
-	local normalized = expandLeet(normalize(text))
-
-	-- Whitelist check
-	for _, w in WHITELIST do
-		if normalized:find(w) then return end
-	end
-
-	for _, badWord in BANNED_WORDS do
-		if normalized:find(badWord) then
-			sendKickReport(player, "Inappropriate " .. context, text)
-			player:Kick("Kicked for inappropriate " .. context)
-			return true
+-- Checks a message for banned words
+local function checkMessage(player, message)
+	local normalizedMsg = normalize(message)
+	for _, word in pairs(BANNED_WORDS) do
+		if string.find(normalizedMsg, word) then
+			sendKickReport(player, "Inappropriate Chat", message)
+			player:Kick("You have been kicked for inappropriate language.")
+			break
 		end
 	end
 end
 
--- Check player info on join
-local function checkPlayerInfo(player)
-	local checked = {
-		["Username"] = player.Name,
-		["DisplayName"] = player.DisplayName,
-	}
+-- 🔗 Live banlist from GitHub
+local bannedUserIds = {}
 
-	for key, val in checked do
-		if checkText(player, val, key) then return end
-	end
-
-	-- Bio check if available
-	local success, descInfo = pcall(function()
-		return Players:GetHumanoidDescriptionFromUserId(player.UserId)
+local function updateBanList()
+	local success, result = pcall(function()
+		return HttpService:GetAsync(BANLIST_URL)
 	end)
 
-	if success and descInfo and descInfo.ClothingDescription then
-		checkText(player, descInfo.ClothingDescription, "Bio")
+	if success then
+		local parsedSuccess, data = pcall(function()
+			return HttpService:JSONDecode(result)
+		end)
+
+		if parsedSuccess and typeof(data) == "table" then
+			bannedUserIds = data
+			print("[P.U.R.E.] Banlist updated from external URL.")
+		else
+			warn("[P.U.R.E.] Failed to parse banlist JSON.")
+		end
+	else
+		warn("[P.U.R.E.] Failed to fetch external banlist:", result)
 	end
 end
 
--- Message listener
-local function onPlayerChatted(player)
-	player.Chatted:Connect(function(message)
-		checkText(player, message, "Chat Message")
-	end)
-end
-
--- Main
-Players.PlayerAdded:Connect(function(player)
-	checkPlayerInfo(player)
-	onPlayerChatted(player)
+-- 🔄 Optional: refresh the banlist every 5 minutes
+task.spawn(function()
+	while true do
+		updateBanList()
+		task.wait(300)
+	end
 end)
 
+-- 🚪 Kick if banned, connect chat filter
+Players.PlayerAdded:Connect(function(player)
+	-- Wait until the banlist has been fetched once
+	while not bannedUserIds do task.wait() end
+
+	for _, bannedId in ipairs(bannedUserIds) do
+		if player.UserId == bannedId then
+			sendKickReport(player, "Banned User", "Tried to join while banned.")
+			player:Kick("You are permanently banned from this experience.")
+			return
+		end
+	end
+
+	-- Not banned, listen to their chat
+	player.Chatted:Connect(function(message)
+		checkMessage(player, message)
+	end)
+end)
+
+-- Initial banlist fetch
+updateBanList()
   </textarea>
 
   <script>
